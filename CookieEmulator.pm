@@ -1,7 +1,7 @@
 package Apache::Test::CookieEmulator;
 
 use vars qw($VERSION);
-$VERSION = do { my @r = (q$Revision: 0.05 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.06 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 # Oh!, we really don't live in this package
 
@@ -221,11 +221,11 @@ __END__
 
 =head1 NAME
 
-  Test::Apache::CookieEmulator - test tool for Cookies without httpd
+  Apache::Test::CookieEmulator - test tool for Cookies without httpd
 
 =head1 SYNOPSIS
 
-  use Test::Apache::CookieEmulator;
+  use Apache::Test::CookieEmulator;
 
   loads into Apache::Cookie namespace
 

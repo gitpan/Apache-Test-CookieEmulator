@@ -1,6 +1,9 @@
 Revision history for Perl extension Test::Apache::CookieEmulator
 
-0.04  Fri Sep 13 14:33:32 PDT 2002
+0.06  Thu Jan 16 18:04:38 PST 2003
+	Correct documentation errors in POD
+
+0.05  Fri Sep 13 14:33:32 PDT 2002
 	add complete functionality for 'expires' to
 	set and return date strings like Apache::Cookie
 
