@@ -1,0 +1,7 @@
+Changes
+ARTISTIC
+GPL
+MANIFEST
+Makefile.PL
+CookieEmulator.pm
+t/a_cookie.t

@@ -1,0 +1,14 @@
+Revision history for Perl extension Test::Apache::CookieEmulator
+
+0.04  Tue Sep  3 11:47:15 PDT 2002
+	various small bug fixes and documentation updates
+
+0.03  Tue Sep  3 05:36:05 PDT 2002
+	correct module name in a_cookie.t
+
+0.02  Tue Sep  3 02:00:52 PDT 2002
+	added method 'parse'
+	updated to accept non-scalar values
+
+0.01  Mon Sep  2 15:41:28 PDT 2002
+	initial release
