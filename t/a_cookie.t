@@ -26,6 +26,45 @@ sub ok {
   ++$test;
 }
 
+sub next_sec {
+  my ($then) = @_;
+  $then = time unless $then;
+  my $now;
+# wait for epoch
+  do { select(undef,undef,undef,0.1); $now = time }
+        while ( $then >= $now );  
+  $now;
+}
+%scale = (
+	m	=> 60,
+	h	=> 60*60,
+	d	=> 60*60*24,
+	M	=> 60*60*24*30,
+	y	=> 60*60*24*30*365,
+);
+ 
+# make cookie time
+sub cook_time {
+  my ($time) = @_;
+  return undef unless $time;
+  return $time if $time =~ /^[a-zA-Z]/;
+  if (  $time =~ /\D/ &&
+        $time =~ /([+-]?)(\d+)([mhdMy]?)/) {
+    my $x = $scale{$3} || 1;
+    $x = -$x if $1 && $1 eq '-';
+    $time = ($2 * $x) + time;
+  }
+  my @mon = qw(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec);
+  my @day = qw(Sun Mon Tue Wed Thu Fri Sat);
+  my($sec,$min,$hour,$mday,$mon,$year,$wday,$yday) = gmtime($time);
+  return
+    (qw(Sun Mon Tue Wed Thu Fri Sat))[$wday] . ', ' .                   # "%a, "
+    sprintf("%02d-",$mday) .                                            # "%d " 
+    (qw(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec))[$mon] . '-' . # "%b " 
+    ($year + 1900) . ' ' .                                              # "%Y "
+    sprintf("%02d:%02d:%02d ",$hour,$min,$sec) .                        # "%T "
+    'GMT';                                                              # "%Z" 
+}
 # input is array of cookie values
 sub fake_cookie {
   my $cookie = {@_};
@@ -46,29 +85,6 @@ sub fake_cookie {
 
 # input is pointer to cookie hash or array
 
-=pod
-
-sub cook2text {
-  my $cp = shift;
-  my %cook = %$cp;
-  my $cook = ($cook{-name}) ? escape($cook{-name}) . '=' : '';
-  if ($cook{-value}) {
-    my $i = 0;
-    while (1) {
-      $cook .= escape($cook{-value}->[$i]);
-      last if ++$i > $#{$cook{-value}};
-    } continue {
-      $cook .= '&';
-    }
-  }
-  foreach(qw(domain path expires)) {
-    $cook .= "; $_=" . $cook{"-$_"} if $cook{"-$_"};
-  }
-  $cook .= ($cook{-secure}) ? '; secure' : '';
-}
-
-=cut
-
 sub cook2text {		# inspired by  CGI::Cookie, Lincoln D. Stein.
   my $cp = shift;
   return '' unless $cp->{-name};
@@ -79,7 +95,7 @@ sub cook2text {		# inspired by  CGI::Cookie, Lincoln D. Stein.
 	if exists $cp->{-domain} && defined $cp->{-domain};
   push(@constant_values,'path='.$cp->{-path})
 	if exists $cp->{-path} && defined $cp->{-path};
-  push(@constant_values,'expires='.$cp->{-expires})
+  push(@constant_values,'expires='. &cook_time($cp->{-expires}))
 	if exists $cp->{-expires} && defined $cp->{-expires};
   push(@constant_values,'secure') 
 	if exists $cp->{-secure} && $cp->{-secure};
@@ -108,7 +124,7 @@ my %tc2 = (
 	-name	=> "tc2",
 	-value	=> ['2some value'],
 	-path	=> '2/a/path',
-	-expires,  '2+3m',
+	-expires,  '+5d',
 	-secure	=> '21',
 );
 
@@ -140,6 +156,7 @@ expected: $expected\nnot "
 }
 
 ## test 2	test internal cookie generation
+&next_sec();
 my $fake = fake_cookie(%testcookie);
 my $expected = cook2text(\%testcookie);
 print "internal test implementation failed
@@ -279,14 +296,19 @@ print "cookie missing\nnot "
 	unless exists $cookies->{tc2};
 &ok;
 
-## test 26 - 29	test fetch
-my @keys = qw(path domain secure expires );
+## test 26 - 28	test fetch
+my @keys = qw(path domain secure);
 foreach (@keys) {
   my $cv = $tc2{"-$_"} || '';
   print "bad value for tc2 -$_ : $cv\nnot "
 	unless $cookies->{tc2}->$_ eq $cv;
   &ok;
 }
+
+## test 29	check -expires
+print "bad value for tc2 -expires : " . cook_time($tc2{-expires}) . "\nnot "
+	unless $cookies->{tc2}->expires eq cook_time($tc2{-expires});
+&ok;
 
 ## test 30	check values
 my $err;
@@ -304,19 +326,25 @@ print "bad value for tc2 -name : $_\nnot "
 	unless ($_ = $cookies->{tc2}->{-name});
 &ok;
 
-## test 32 - 35	test put
+## test 32 - 34	test put
 my $start = $count;
 foreach(@keys) {
   $cookies->{tc2}->$_(++$count);
 }
 $count = $start;
 foreach(@keys) {
-  print "results:  ",$cookies->{tc2}->$_, "\n   ne\nexpected: ",$start,"\nnot "
+  print "results:  ",$cookies->{tc2}->$_, "\n   ne\nexpected: ",$count,"\nnot "
 	unless $cookies->{tc2}->$_ == ++$count;
   &ok;
 }
+# test 35	put to expires
+$cookies->{tc2}->expires(++$count);
+print "results: $_\n   ne\nexpected: ", cook_time($count), "\nnot "
+	unless ($_ = cook_time($cookies->{tc2}->expires)) eq cook_time($count);
+&ok;
 
 ## test 36	test put of values
+push @keys, 'expires';
 $cookies->{tc2}->value([@keys]);
 @values = $cookies->{tc2}->value;
 foreach(0..$#keys) {
@@ -338,7 +366,8 @@ print "failed to change name\nnot "
 	if exists $cookies->{tc2};
 &ok;
 
-## test 38 - 41	recheck under new name, should work
+## test 38 - 40	recheck under new name, should work
+pop @keys;	# remove 'expires'
 $count = $start;
 foreach(@keys) {
   print "results:  ",$cookies->{newname}->$_, "\n   ne\nexpected: ",$start,"\nnot "
@@ -346,7 +375,14 @@ foreach(@keys) {
   &ok;
 }
 
+## test 41	recheck expires
+$cookies->{newname}->expires(++$count);
+print "results: $_\n   ne\nexpected: ", cook_time($count), "\nnot "
+	unless ($_ = cook_time($cookies->{newname}->expires)) eq cook_time($count);
+&ok;
+
 ## test 42	check returned hash
+push @keys, 'expires';
 my %hash = $cookies->{newname}->value;
 foreach(my $i=0; $i<=$#keys; $i+=2) {
   unless ($keys[$i] eq $hash{$keys[$i+1]}) {

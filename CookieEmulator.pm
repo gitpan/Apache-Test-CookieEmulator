@@ -1,7 +1,7 @@
 package Apache::Test::CookieEmulator;
 
 use vars qw($VERSION);
-$VERSION = do { my @r = (q$Revision: 0.04 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.05 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 # Oh!, we really don't live in this package
 
@@ -16,7 +16,6 @@ $Cookies = {};
 #
 sub fetch { return wantarray ? %{$Cookies} : $Cookies; }
 sub path {&do_this;}
-sub expires {&do_this;}
 sub secure {&do_this;}
 sub name {&do_this;}
 sub domain {&do_this;}
@@ -48,6 +47,8 @@ sub new {
     }	# hmm.... must be a SCALAR ref or CODE ref
     $self->{-value} = [@vals];
   }
+  $self->{-expires} = _expires($self->{-expires})
+	if exists $self->{-expires} && defined $self->{-expires};
   bless $self, $class;
   return $self;
 }
@@ -59,7 +60,7 @@ sub bake {
     delete $Cookies->{$self->{-name}};
   }
 }
-sub parse {		# pretty much taken from CGI::Cookie v1.20 by Lincoln Stein
+sub parse {		# adapted from CGI::Cookie v1.20 by Lincoln Stein
   my ($self,$raw_cookie) = @_;
   if ($raw_cookie) {
     my $class = ref($self) || $self;
@@ -89,6 +90,67 @@ sub parse {		# pretty much taken from CGI::Cookie v1.20 by Lincoln Stein
   @_ = ($self);
   goto &fetch;
 }
+sub expires {
+  my $self = shift;
+  $self->{-expires} = _expires(shift)
+	if @_;
+  return (exists $self->{-expires} &&
+	  defined $self->{-expires})
+	? $self->{-expires} : undef;
+}
+# Adapted from CGI::Cookie v1.20 by Lincoln Stein
+# This internal routine creates date strings suitable for use in
+# cookies and HTTP headers.  (They differ, unfortunately.)
+# Thanks to Mark Fisher for this.
+sub _expires {
+    my($time) = @_;
+    my(@MON)=qw/Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec/;
+    my(@WDAY) = qw/Sun Mon Tue Wed Thu Fri Sat/;
+
+    # pass through preformatted dates for the sake of expire_calc()
+    $time = _expire_calc($time);
+    return $time unless $time =~ /^\d+$/;
+    my $sc = '-';
+    my($sec,$min,$hour,$mday,$mon,$year,$wday) = gmtime($time);
+    $year += 1900;
+    return sprintf("%s, %02d$sc%s$sc%04d %02d:%02d:%02d GMT",
+                   $WDAY[$wday],$mday,$MON[$mon],$year,$hour,$min,$sec);
+}
+# Copied directly from CGI::Cookie v1.20 by Lincoln Stein
+# This internal routine creates an expires time exactly some number of
+# hours from the current time.  It incorporates modifications from 
+# Mark Fisher.
+sub _expire_calc {
+    my($time) = @_;
+    my(%mult) = ('s'=>1,
+                 'm'=>60,
+                 'h'=>60*60,
+                 'd'=>60*60*24,
+                 'M'=>60*60*24*30,
+                 'y'=>60*60*24*365);
+    # format for time can be in any of the forms...
+    # "now" -- expire immediately
+    # "+180s" -- in 180 seconds
+    # "+2m" -- in 2 minutes
+    # "+12h" -- in 12 hours
+    # "+1d"  -- in 1 day
+    # "+3M"  -- in 3 months
+    # "+2y"  -- in 2 years
+    # "-3m"  -- 3 minutes ago(!)
+    # If you don't supply one of these forms, we assume you are
+    # specifying the date yourself
+    my($offset);
+    if (!$time || (lc($time) eq 'now')) {
+        $offset = 0;
+    } elsif ($time=~/^\d+/) {
+        return $time;
+    } elsif ($time=~/^([+-]?(?:\d+|\d*\.\d*))([mhdMy]?)/) {
+        $offset = ($mult{$2} || 1)*$1;
+    } else {
+        return $time;
+    }
+    return (time+$offset);
+}
 sub remove {
   my ($self,$name) = @_;
   if ($name) {
@@ -98,7 +160,6 @@ sub remove {
 	if exists $Cookies->{$self->{-name}};
   }
 }
-
 sub as_string {
   my $self = shift;
   return '' unless $self->name;
@@ -111,9 +172,10 @@ sub as_string {
       $i = '&'; 
     }
   }  
-  foreach(qw(domain path expires)) {
+  foreach(qw(domain path)) {
     $cook .= "; $_=" . $cook{"-$_"} if $cook{"-$_"};
   }
+  $cook .= "; expires=$_" if ($_ = expires(\%cook));
   $cook .= ($cook{-secure}) ? '; secure' : '';
 }
 
@@ -204,7 +266,7 @@ Delete the given named cookie or the cookie represented by the pointer
   $cookie = Apache::Cookie->new($r,
 	-name	 => 'some name',
 	-value	 => 'my value',
-	-expires => 'text for testing',
+	-expires => 'time or relative time,
 	-path	 => 'some path',
 	-domain	 => 'some.domain',
 	-secure	 => 1,
@@ -240,12 +302,16 @@ The B<Apache> request object, B<$r>, is not used and may be undef.
   Cookie memory is cleared and replaced with the contents
   of the parsed "raw cookie string".
 
-=item name, value, domain, path, expires, secure
+=item name, value, domain, path, secure
 
   Get or set the value of the designated cookie.
   These are all just text strings for test use,
-  no date conversion is done for "expires".
   "value" accepts SCALARS, HASHrefs, ARRAYrefs
+
+=item expires
+
+  Sets or returns time in the same format as Apache::Cookie 
+  and CGI::Cookie. See their man pages for details
 
 =back
 
@@ -253,9 +319,11 @@ The B<Apache> request object, B<$r>, is not used and may be undef.
 
 Apache::Cookie(3)
 
-=head1 AUTHOR
+=head1 AUTHORS
 
 Michael Robinton michael@bizsystems.com
+Inspiration and code for subs (expires, expires_calc, parse)
+from CGI::Util by Lincoln Stein
 
 =head1 COPYRIGHT and LICENSE
 
